@@ -102,12 +102,16 @@ const addListeners = (root: TreeNode) => {
   return root
 }
 
-export const toTreeData = (node: TreeNode): TreeData =>  {
-  const { content, children } = node
-  if (children.length > 0) return [content, children.map(toTreeData)]
-  else return content
+const createTreeNodeHtml = (params: Partial<TreeParams>) => (data: TreeData): string => {
+  if (typeof data === "string") {
+    return treeNodeHtml(params)(data)
+  }
+  else {
+    const [content, children] = data
+    return treeNodeHtml(params)(content, ...children.map(createTreeNodeHtml(params)))
+  }
 }
-export const treeNodeHtml = (params: Partial<TreeParams>) => (content: string, ...children: string[]) => {
+const treeNodeHtml = (params: Partial<TreeParams>) => (content: string, ...children: string[]) => {
   const parameters = Object.assign({}, defaults, params)
   return `
     <div class="tree_node">
@@ -120,7 +124,7 @@ export const treeNodeHtml = (params: Partial<TreeParams>) => (content: string, .
     </div>
   `.replace(/\n\s*/g,"")
 }
-export const tree = (html: string, params: Partial<TreeParams> = {}): Tree => {
+const tree = (html: string, params: Partial<TreeParams> = {}): Tree => {
   const parameters = Object.assign({}, defaults, params)
   const { indent, id } = parameters
   const style = `
@@ -175,4 +179,18 @@ export const tree = (html: string, params: Partial<TreeParams> = {}): Tree => {
     },
     root
   }
+}
+const nodeToTreeData = (node: TreeNode): TreeData =>  {
+  const { content, children } = node
+  if (children.length > 0) return [content, children.map(nodeToTreeData)]
+  else return content
+}
+
+export const toTreeData = (tree: Tree): TreeData => nodeToTreeData(tree.root)
+export const createTree = (data: TreeData, params: Partial<TreeParams>): Tree => {
+  return tree(createTreeNodeHtml (params) (data), params)
+}
+export const treeData = (content: string, ...children: TreeData[]): TreeData => {
+  if (children.length === 0) return content
+  else return [content, children]
 }
