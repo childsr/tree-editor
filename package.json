@@ -1,0 +1,20 @@
+{
+  "name": "@ionre/tree-editor",
+  "version": "0.0.3",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "prod": "tsc && ./scripts/prod.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/childsr/tree-editor.git"
+  },
+  "keywords": [],
+  "author": "Ryan Childs",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^16.6.1"
+  }
+}
