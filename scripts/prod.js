@@ -50,6 +50,7 @@ function publish(version) {
   writeFileSync(getPath("dist/package.json"), JSON.stringify(packageJson, null, 2))
   writeFileSync(getPath("package.json"), JSON.stringify(packageJson, null, 2))
   copyFileSync(getPath("LICENSE"), getPath("./dist/LICENSE"))
+  copyFileSync(getPath("README.md"), getPath("./dist/README.md"))
 
   spawn("npm", ["publish", getPath("dist"), "--access", "public"/* , "--dry-run" */], { stdio: ["inherit", "inherit", "inherit"] })
     .on("close", process.exit)
