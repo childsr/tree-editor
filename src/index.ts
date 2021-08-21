@@ -42,9 +42,7 @@ const treeNode = (el: HTMLDivElement): TreeNode => {
   const contentEl = el.querySelector(".content") as HTMLSpanElement
   let content = contentEl.innerText
   let children: TreeNode[]
-  const setChildren = () => {
-    children = [...childrenElement.children].map(treeNode as any) as TreeNode[]
-  }
+  const setChildren = () => { children = [...childrenElement.children].map(treeNode as any) as TreeNode[] }
   setChildren()
   return {
     get content() { return content },
@@ -78,8 +76,9 @@ const treeNode = (el: HTMLDivElement): TreeNode => {
     remove(index: number) {
       if (index < 0 || index >= childrenElement.childElementCount) return
       else {
-        const child = childrenElement.children[index]
-        childrenElement.removeChild(child)
+        const childElement = childrenElement.children[index]
+        childrenElement.removeChild(childElement)
+        removeListeners(children[index])
         setChildren()
         addListeners(this)
       }
@@ -87,6 +86,7 @@ const treeNode = (el: HTMLDivElement): TreeNode => {
     _el: el
   }
 }
+/** If `root` is not a leaf node, add listener callbacks to it and to all its non-leaf descendents. */
 const addListeners = (root: TreeNode) => {
   const children = root.children
   const bullets = [...root._el.children].slice(0,2)
@@ -101,6 +101,17 @@ const addListeners = (root: TreeNode) => {
   for (const child of children) addListeners(child)
   return root
 }
+/** Remove listener callbacks from `root` and all of its descendents. */
+const removeListeners = (root: TreeNode) => {
+  const children = root.children
+  const bullets = [...root._el.children].slice(0,2)
+  for (const bullet of bullets) {
+    (bullet as HTMLSpanElement).onclick = null
+  }
+  for (const child of children) removeListeners(child)
+  return root
+}
+
 
 const createTreeNodeHtml = (params: Partial<TreeParams>) => (data: TreeData): string => {
   if (typeof data === "string") {
