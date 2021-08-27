@@ -6,34 +6,118 @@ export interface Tree {
   readonly _el: HTMLDivElement
 }
 export interface TreeNode {
+  /** The text/html content of this node. */
   content: string
+  /** Whether this node's children are visible or collapsed. */
   collapsed: boolean
   readonly children: TreeNode[]
-  add(childData: TreeData, index?: number): void
+  /**
+   * Add a new child to this node. Optionally provide the `position`
+   * where the child will be added
+   * (e.g. `0` to be inserted at the top, `1` to be inserted
+   * immediately after the current top child, etc.)
+   * 
+   * By default, the new child will be added to the end/bottom.
+   * */
+  add(childData: TreeData, position?: number): void
+  /** Remove the child located at `index` from this node. */
   remove(index: number): void
+  /** Get the `TreeData` object for this node and its descendents. */
   getTreeData(): TreeData
   readonly _el: HTMLDivElement
 }
 export type TreeData = string | [content: string, children: TreeData[]]
 
 export interface TreeParams {
-  indent: string
-  fontFamily: string
-  fontWeight: string
-  fontSize: string
-  baseFontSize: string
+  /** The `id` value of the `Tree`'s root element. */
   id: string
+  /**
+   * The className to be given to each `TreeNode` element.
+   * 
+   * default: `"tree_node"`
+   * */
+  nodeClassName: string
+  
+  /**
+   * How much each line is indented relative to its parent. (CSS value)
+   * 
+   * default: `"10px"`
+   * */
+  indent: string
+  /**
+   * default: `"monospace"`
+   * */
+  fontFamily: string
+  /**
+   * default: `"normal"`
+   * */
+  fontWeight: string
+  /**
+   * CSS Length
+   * 
+   * default: `"12pt"`
+   * */
+  fontSize: string
+  /**
+   * CSS Length
+   * */
+  baseFontSize: string
+  /**
+   * CSS Length
+   *
+   * default: `"1px"`
+   * */
+  nodeMarginBottom: string
+  /**
+   * CSS Length
+   * 
+   * default: `"4px"`
+   * */
+  nodePaddingRight: string
+  /**
+   * CSS Length
+   * 
+   * default: `"4px"`
+   * */
+  nodePaddingTop: string
+  /**
+   * CSS Length
+   * 
+   * default: `"4px"`
+   * */
+  nodePaddingBottom: string
+
+  /**
+   * The string that will be used as the bullet point on collapsed nodes (can be html).
+   * 
+   * default: "+"
+   * */
   collapsedBullet: string
+  /**
+   * The string that will be used as the bullet point on expanded nodes (can be html).
+   * 
+   * default: "-"
+   * */
   expandedBullet: string
 }
 
-const defaults: Partial<TreeParams> = {
+type OptionalParamKey = "id" | "baseFontSize"
+// type OptionalParams = Pick<TreeParams,OptionalParamKey>
+type RequiredParams = Omit<TreeParams,OptionalParamKey>
+// type PartialParams = RequiredParams & Partial<OptionalParams>
+
+const defaults = {
   indent: "10px",
   fontFamily: "monospace",
   fontWeight: "normal",
   fontSize: "12pt",
-  expandedBullet: "- ",
-  collapsedBullet: "+ "
+  expandedBullet: "-",
+  collapsedBullet: "+",
+  nodeClassName: "tree_node",
+  nodeMarginBottom: "1px",
+  nodePaddingRight: "4px",
+  nodePaddingTop: "4px",
+  nodePaddingBottom: "4px"
 }
 
 const compile = (html: string): HTMLElement => {
@@ -43,26 +127,34 @@ const compile = (html: string): HTMLElement => {
 }
 const treeNode = (params: Partial<TreeParams>) => (el: HTMLDivElement): TreeNode => {
   const childrenElement = el.querySelector(".children") as HTMLDivElement
-  const contentEl = el.querySelector(".content") as HTMLSpanElement
-  let content = contentEl.innerText
+  const textInputEl = el.querySelector(`.content > input[type="text"]`) as HTMLInputElement
   let children: TreeNode[]
-  const setChildren = () => { children = [...childrenElement.children].map(treeNode (params) as any) as TreeNode[] }
+  const setChildren = () => {
+    children = [...childrenElement.children].map(treeNode (params) as any) as TreeNode[]
+    if (children.length === 0) {
+      el.querySelector(".expanded.bullet")?.classList.add("leaf")
+    }
+    else {
+      el.querySelector(".expanded.bullet")?.classList.remove("leaf")
+    }
+  }
   setChildren()
   return {
-    get content() { return content },
-    set content(c) {
-      content = c
-      contentEl.innerText = content
-    },
+    get content() { return textInputEl.value },
+    set content(c) { textInputEl.value = c },
     get collapsed() { return childrenElement.classList.contains("collapsed") },
     set collapsed(c) {
       if (c) {
         childrenElement.classList.add("collapsed")
         el.classList.add("collapsed")
+        childrenElement.classList.remove("expanded")
+        el.classList.remove("expanded")
       }
       else {
         childrenElement.classList.remove("collapsed")
         el.classList.remove("collapsed")
+        childrenElement.classList.add("expanded")
+        el.classList.add("expanded")
       }
     },
     get children() { return children },
@@ -94,7 +186,8 @@ const treeNode = (params: Partial<TreeParams>) => (el: HTMLDivElement): TreeNode
 /** If `root` is not a leaf node, add listener callbacks to it and to all its non-leaf descendents. */
 const addListeners = (root: TreeNode) => {
   const children = root.children
-  const bullets = [...root._el.children].slice(0,2)
+  const content = root._el.children[0]
+  const bullets = [...content.children].slice(0,2)
   for (const bullet of bullets) {
     if (children.length > 0) {
       (bullet as HTMLSpanElement).onclick = () => { root.collapsed = !root.collapsed }
@@ -109,14 +202,14 @@ const addListeners = (root: TreeNode) => {
 /** Remove listener callbacks from `root` and all of its descendents. */
 const removeListeners = (root: TreeNode) => {
   const children = root.children
-  const bullets = [...root._el.children].slice(0,2)
+  const content = root._el.children[0]
+  const bullets = [...content.children].slice(2)
   for (const bullet of bullets) {
     (bullet as HTMLSpanElement).onclick = null
   }
   for (const child of children) removeListeners(child)
   return root
 }
-
 
 const treeNodeToTreeData = (node: TreeNode): TreeData => {
   const { content, children } = node
@@ -126,12 +219,14 @@ const treeNodeToTreeData = (node: TreeNode): TreeData => {
 const genTreeNodeHtml = (params: Partial<TreeParams>) => (content: string, ...children: string[]) => {
   const parameters = Object.assign({}, defaults, params)
   return `
-    <div class="tree_node">
-      <span class="collapsed bullet">${parameters.collapsedBullet}</span>
-      <span class="expanded bullet">${parameters.expandedBullet}</span>
-      <span class="content">${content}</span>
-      <div class="children">
-          ${children.join("")}
+    <div class="${parameters.nodeClassName} expanded">
+      <span class="content">
+        <span class="collapsed bullet">${parameters.collapsedBullet}</span>
+        <span class="expanded bullet">${parameters.expandedBullet}</span>
+        <input type="text" value="${content}">
+      </span>
+      <div class="children expanded">
+        ${children.join("")}
       </div>
     </div>
   `.replace(/\n\s*/g,"")
@@ -145,13 +240,72 @@ const treeDataToHtml = (params: Partial<TreeParams>) => (data: TreeData): string
     return genTreeNodeHtml(params)(content, ...children.map(treeDataToHtml(params)))
   }
 }
-// const genTreeNodeElement = (params: Partial<TreeParams>) => (data: TreeData) => compile(treeDataToHtml (params) (data)) as HTMLDivElement
-// const treeNodeToHtml = (params: Partial<TreeParams>) => (node: TreeNode): string => (
-//   treeDataToHtml (params) (treeNodeToTreeData (node))
-// )
-// const treeDataToTreeNode = (params: Partial<TreeParams>) => (data: TreeData) => {
-//   return treeNode (params) (genTreeNodeElement (params) (data))
-// }
+
+const generateStyleSheet = (params: RequiredParams) => `
+  .tree > .${params.nodeClassName} {
+    margin-left: 0;
+    border-radius: 0;
+  }
+  .${params.nodeClassName} {
+    margin-left: ${params.indent};
+    margin-bottom: ${params.nodeMarginBottom};
+    padding-right: ${params.nodePaddingRight};
+    padding-top: ${params.nodePaddingTop};
+    padding-bottom: ${params.nodePaddingBottom};
+    font-family: ${params.fontFamily};
+    font-size: ${params.fontSize};
+    font-weight: ${params.fontWeight};
+  }
+  .collapsed.bullet {
+    visibility: hidden;
+    font-size: 0;
+    width: 0;
+  }
+  .expanded.bullet {
+    visibility: visible;
+    width: initial;
+    font-size: inherit;
+  }
+  .${params.nodeClassName}.collapsed > .content > .collapsed.bullet {
+    visibility: inherit;
+    width: initial;
+    font-size: inherit;
+  }
+  .${params.nodeClassName}.collapsed > .content > .expanded.bullet {
+    visibility: hidden;
+    font-size: 0;
+    width: 0;
+  }
+  .children.collapsed {
+    visibility: hidden;
+    height: 0;
+  }
+  .children.collapsed * {
+    visibility: hidden;
+  }
+  .bullet {
+    user-select: none;
+    cursor: pointer;
+    padding-left: 0.2em;
+    padding-right: 0.2em;
+  }
+  .bullet.expanded.leaf {
+    color: rgba(0, 0, 0, 0.1);
+    cursor: default;
+  }
+  .content {
+    display: flex;
+  }
+  input[type="text"] {
+    flex: auto;
+    outline: none;
+    background: transparent;
+    border: none;
+    font-family: inherit;
+    font-size: inherit;
+  }
+`.trim()
+
 /** Ensure all child html elements have been appended to their parent elements. */
 const appendAll = (node: TreeNode) => {
   const { children, _el } = node
@@ -173,45 +327,15 @@ const appendAll = (node: TreeNode) => {
 const tree = (html: string, params: Partial<TreeParams>): Tree => {
   const parameters = Object.assign({}, defaults, params)
   const { indent, id } = parameters
-  const style = `
-    <style>
-      .tree_node {
-        margin-left: ${indent};
-        padding-right: ${indent};
-        padding-top: 0.2em;
-        padding-bottom: 0.2em;
-        font-family: ${parameters.fontFamily};
-        font-size: ${parameters.fontSize};
-        font-weight: ${parameters.fontWeight};
-      }
-      .collapsed.bullet {
-        visibility: hidden;
-        font-size: 0;
-        width: 0;
-      }
-      .expanded.bullet {
-        visibility: visible;
-        width: initial;
-        font-size: inherit;
-      }
-      .tree_node.collapsed > .collapsed.bullet {
-        visibility: inherit;
-        width: initial;
-        font-size: inherit;
-      }
-      .tree_node.collapsed > .expanded.bullet {
-        visibility: hidden;
-        font-size: 0;
-        width: 0;
-      }
-      .children.collapsed { visibility: hidden; height: 0; }
-      .children.collapsed * { visibility: hidden; }
-    </style>
-  `
+  const style = [
+    "<style>",
+    generateStyleSheet(parameters),
+    "</style>"
+  ].join("\n")
   const openingTag = `<div class="tree"${id ? `id="${id}"` : ""}>`
   const outerHtml = (inner: string) => `${openingTag}${style}${inner}</div>`
   const el = compile(outerHtml(html)) as HTMLDivElement
-  let root = treeNode (params) (el.querySelector(".tree_node") as HTMLDivElement)
+  let root = treeNode (params) (el.querySelector(`.${parameters.nodeClassName}`) as HTMLDivElement)
 
   if (parameters.baseFontSize) root._el.style.fontSize = parameters.baseFontSize
 
@@ -248,7 +372,7 @@ const tree = (html: string, params: Partial<TreeParams>): Tree => {
 export const createTree = (data: TreeData, params: Partial<TreeParams> = {}): Tree => {
   return tree(treeDataToHtml (params) (data), params)
 }
-/** Helper function to make writing out `TreeData` a bit easier.  */
+/** Helper function to make writing out `TreeData` a bit easier. */
 export const t = (content: string, ...children: TreeData[]): TreeData => {
   if (children.length === 0) return content
   else return [content, children]
