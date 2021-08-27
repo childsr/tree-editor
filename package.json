@@ -1,6 +1,6 @@
 {
   "name": "@ionre/tree-editor",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "A tree UI component allowing users to edit text in a tree-like structure.",
   "main": "dist/index.js",
   "scripts": {
