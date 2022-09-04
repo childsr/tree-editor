@@ -26,10 +26,13 @@ export interface TreeNode {
   getTreeData(): TreeData
   readonly _el: HTMLDivElement
 }
-export type TreeData = string | [content: string, children: TreeData[]]
+export type TreeDataBranch = [content: string, children: TreeData[]]
+export type TreeData = string | TreeDataBranch
 
 export interface TreeParams {
-  /** The `id` value of the `Tree`'s root element. */
+  /**
+   * The `id` value of the `Tree`'s root element.
+   * */
   id: string
   /**
    * The className to be given to each `TreeNode` element.
@@ -101,16 +104,33 @@ export interface TreeParams {
   expandedBullet: string
 }
 
-type OptionalParamKey = "id" | "baseFontSize"
-// type OptionalParams = Pick<TreeParams,OptionalParamKey>
-type RequiredParams = Omit<TreeParams,OptionalParamKey>
-// type PartialParams = RequiredParams & Partial<OptionalParams>
+const isTreeData = (x: any): x is TreeData => typeof x === "string" || isTreeDataBranch(x)
+const isTreeDataBranch = (x: any): x is TreeDataBranch => {
+  return (
+    Array.isArray(x) &&
+    x.length === 2 &&
+    typeof x[0] === "string" &&
+    Array.isArray(x[1]) &&
+    x[1].every(isTreeData)
+  )
+}
 
-const defaults = {
+const MOD_KEYS = ["altKey", "ctrlKey", "metaKey", "shiftKey"] as const
+const modKeys = (e: KeyboardEvent) => {
+  let value = 0
+  for (let i = 0; i < MOD_KEYS.length; i++) {
+    if (e[MOD_KEYS[i]]) value += Math.pow(2, i)
+  }
+  return value
+}
+
+const defaults: TreeParams = {
+  id: "",
   indent: "10px",
   fontFamily: "monospace",
   fontWeight: "normal",
   fontSize: "12pt",
+  baseFontSize: "",
   expandedBullet: "-",
   collapsedBullet: "+",
   nodeClassName: "tree_node",
@@ -119,18 +139,19 @@ const defaults = {
   nodePaddingTop: "4px",
   nodePaddingBottom: "4px"
 }
+const applyDefaults = (params: Partial<TreeParams>): TreeParams => Object.assign({}, defaults, params)
 
 const compile = (html: string): HTMLElement => {
   const div = document.createElement("div")
   div.innerHTML = html
   return div.children[0] as HTMLElement
 }
-const treeNode = (params: Partial<TreeParams>) => (el: HTMLDivElement): TreeNode => {
+const createTreeNode = (params: TreeParams, el: HTMLDivElement): TreeNode => {
   const childrenElement = el.querySelector(".children") as HTMLDivElement
   const textInputEl = el.querySelector(`.content > input[type="text"]`) as HTMLInputElement
   let children: TreeNode[]
   const setChildren = () => {
-    children = [...childrenElement.children].map(treeNode (params) as any) as TreeNode[]
+    children = [...childrenElement.children].map(child => createTreeNode (params, child as HTMLDivElement)) as TreeNode[]
     if (children.length === 0) {
       el.querySelector(".expanded.bullet")?.classList.add("leaf")
     }
@@ -188,6 +209,24 @@ const addListeners = (root: TreeNode) => {
   const children = root.children
   const content = root._el.children[0]
   const bullets = [...content.children].slice(0,2)
+  if (children.length > 0) {
+    root._el.onkeydown = e => {
+      const mod = modKeys(e)
+      if (mod === 2) {
+        if (e.code === "ArrowDown") {
+          root.collapsed = false
+          e.stopPropagation()
+        }
+        if (e.code === "ArrowUp") {
+          root.collapsed = true
+          e.stopPropagation()
+        }
+      }
+    }
+  }
+  else {
+    root._el.onkeydown = null
+  }
   for (const bullet of bullets) {
     if (children.length > 0) {
       (bullet as HTMLSpanElement).onclick = () => { root.collapsed = !root.collapsed }
@@ -204,6 +243,7 @@ const removeListeners = (root: TreeNode) => {
   const children = root.children
   const content = root._el.children[0]
   const bullets = [...content.children].slice(2)
+  root._el.onkeydown = null
   for (const bullet of bullets) {
     (bullet as HTMLSpanElement).onclick = null
   }
@@ -216,14 +256,14 @@ const treeNodeToTreeData = (node: TreeNode): TreeData => {
   if (children.length > 0) return [content, children.map(treeNodeToTreeData)]
   else return content
 }
-const genTreeNodeHtml = (params: Partial<TreeParams>) => (content: string, ...children: string[]) => {
-  const parameters = Object.assign({}, defaults, params)
+const genTreeNodeHtml = (params: TreeParams) => (content: string, ...children: string[]) => {
+  const parameters = applyDefaults(params)
   return `
     <div class="${parameters.nodeClassName} expanded">
       <span class="content">
         <span class="collapsed bullet">${parameters.collapsedBullet}</span>
         <span class="expanded bullet">${parameters.expandedBullet}</span>
-        <input type="text" value="${content}">
+        <input type="text"${content ? ` value="${content}"` : ""}>
       </span>
       <div class="children expanded">
         ${children.join("")}
@@ -231,7 +271,7 @@ const genTreeNodeHtml = (params: Partial<TreeParams>) => (content: string, ...ch
     </div>
   `.replace(/\n\s*/g,"")
 }
-const treeDataToHtml = (params: Partial<TreeParams>) => (data: TreeData): string => {
+const treeDataToHtml = (params: TreeParams) => (data: TreeData): string => {
   if (typeof data === "string") {
     return genTreeNodeHtml(params)(data)
   }
@@ -241,8 +281,8 @@ const treeDataToHtml = (params: Partial<TreeParams>) => (data: TreeData): string
   }
 }
 
-const generateStyleSheet = (params: RequiredParams) => `
-  .tree > .${params.nodeClassName} {
+const generateStyleSheet = (params: TreeParams) => `
+  ${params.id ? `#${params.id}` : ""}.tree > .${params.nodeClassName} {
     margin-left: 0;
     border-radius: 0;
   }
@@ -256,12 +296,12 @@ const generateStyleSheet = (params: RequiredParams) => `
     font-size: ${params.fontSize};
     font-weight: ${params.fontWeight};
   }
-  .collapsed.bullet {
+  .${params.nodeClassName} > .content > .collapsed.bullet {
     visibility: hidden;
     font-size: 0;
     width: 0;
   }
-  .expanded.bullet {
+  .${params.nodeClassName} > .content > .expanded.bullet {
     visibility: visible;
     width: initial;
     font-size: inherit;
@@ -276,27 +316,30 @@ const generateStyleSheet = (params: RequiredParams) => `
     font-size: 0;
     width: 0;
   }
-  .children.collapsed {
+  .${params.nodeClassName} > .children.collapsed {
     visibility: hidden;
     height: 0;
   }
-  .children.collapsed * {
+  .${params.nodeClassName} > .children.collapsed * {
     visibility: hidden;
   }
-  .bullet {
+  .${params.nodeClassName} > .children.collapsed .expanded.bullet {
+    visibility: hidden;
+  }
+  .${params.nodeClassName} > .content > .bullet {
     user-select: none;
     cursor: pointer;
     padding-left: 0.2em;
     padding-right: 0.2em;
   }
-  .bullet.expanded.leaf {
+  .${params.nodeClassName} > .content > .bullet.expanded.leaf {
     color: rgba(0, 0, 0, 0.1);
     cursor: default;
   }
-  .content {
+  .${params.nodeClassName} > .content {
     display: flex;
   }
-  input[type="text"] {
+  .${params.nodeClassName} > .content > input[type="text"] {
     flex: auto;
     outline: none;
     background: transparent;
@@ -324,20 +367,19 @@ const appendAll = (node: TreeNode) => {
     appendAll (child)
   }
 }
-const tree = (html: string, params: Partial<TreeParams>): Tree => {
-  const parameters = Object.assign({}, defaults, params)
-  const { indent, id } = parameters
+const tree = (data: TreeData, params: TreeParams): Tree => {
+  const html = treeDataToHtml (params) (data)
   const style = [
     "<style>",
-    generateStyleSheet(parameters),
+    generateStyleSheet(params),
     "</style>"
   ].join("\n")
-  const openingTag = `<div class="tree"${id ? `id="${id}"` : ""}>`
+  const openingTag = `<div class="tree"${params.id ? ` id="${params.id}"` : ""}>`
   const outerHtml = (inner: string) => `${openingTag}${style}${inner}</div>`
   const el = compile(outerHtml(html)) as HTMLDivElement
-  let root = treeNode (params) (el.querySelector(`.${parameters.nodeClassName}`) as HTMLDivElement)
+  let root = createTreeNode (params, el.querySelector(`.${params.nodeClassName}`) as HTMLDivElement)
 
-  if (parameters.baseFontSize) root._el.style.fontSize = parameters.baseFontSize
+  if (params.baseFontSize) root._el.style.fontSize = params.baseFontSize
 
   let mounted = false
   
@@ -369,9 +411,17 @@ const tree = (html: string, params: Partial<TreeParams>): Tree => {
   }
 }
 
-export const createTree = (data: TreeData, params: Partial<TreeParams> = {}): Tree => {
-  return tree(treeDataToHtml (params) (data), params)
+interface CreateTree {
+  (data: TreeData, params?: Partial<TreeParams>): Tree
+  (params?: Partial<TreeParams>): Tree
 }
+
+export const createTree: CreateTree = (data, params = {}) => (
+  isTreeData(data)
+    ? tree(data, applyDefaults(params as any))
+    : tree("", applyDefaults(data ?? {}))
+)
+
 /** Helper function to make writing out `TreeData` a bit easier. */
 export const t = (content: string, ...children: TreeData[]): TreeData => {
   if (children.length === 0) return content
