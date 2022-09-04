@@ -14,6 +14,11 @@
     "removeComments": true,
     "outDir": "dist",
     "baseUrl": ".",
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2017"
+    ],
     "paths": {
       "*": [
         "node_modules/*"
